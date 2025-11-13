@@ -66,6 +66,19 @@ async function run() {
         $set: data
       }
         const result = await bookCollection.updateOne(filter, update)
+
+        res.send({
+          success: true,
+          result
+        })
+    })
+
+    app.delete('/books/:id', async (req, res) => {
+      const {id} = req.params
+      const objectid = new ObjectId(id)
+
+        const result = await bookCollection.deleteOne({_id: objectid})
+
         res.send({
           success: true,
           result
