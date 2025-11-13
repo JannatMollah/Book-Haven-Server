@@ -1,28 +1,18 @@
-const express = require('express')
-const cors = require('cors')
-const { MongoClient, ServerApiVersion, ClientEncryption, ObjectId } = require('mongodb');
-const admin = require("firebase-admin");
-const serviceAccount = require("./serviceKey.json");
-require("dotenv").config()
-const app = express()
-const port = 3000
+const express = require('express');
+const cors = require('cors');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+require('dotenv').config();
 
-app.use(cors())
-app.use(express.json())
+const app = express();
+const port = process.env.PORT || 5000;
 
-app.get('/', (req, res) => {
-  res.send('Hello World!')
-})
+// Middleware
+app.use(cors());
+app.use(express.json());
 
+// MongoDB Connection
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.wbnbgws.mongodb.net/?retryWrites=true&w=majority`;
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
-
-
-const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@cluster0.wbnbgws.mongodb.net/?appName=Cluster0`;
-
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -31,119 +21,165 @@ const client = new MongoClient(uri, {
   }
 });
 
-
-const verifyToken = async (req, res, next) => {
-  const authorization = req.headers.authorization
-  if (!authorization) {
-    res.status(401).send({
-      message: "token not found"
-    })
-  }
-  const token = authorization.split(' ')[1]
-
-
-
-  try {
-    await admin.auth().verifyIdToken(token)
-    next()
-  } catch (error) {
-    res.status(401).send({
-      message: "unauthorized access"
-    })
-  }
-
-  next()
-
-}
-
-
-
-
 async function run() {
   try {
     // await client.connect();
+    const db = client.db('BookHaven');
+    const booksCollection = db.collection('Books');
+    const myBooksCollection = db.collection('MyBooks');
+    const commentsCollection = db.collection('Comments');
 
-    const db = client.db('BookHaven')
-    const bookCollection = db.collection('Books')
-
+    // Books routes
     app.get('/books', async (req, res) => {
-      const result = await bookCollection.find().toArray()
+      try {
+        const books = await booksCollection.find().toArray();
+        res.send(books);
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to fetch books' });
+      }
+    });
 
-      res.send(result)
-    })
+    app.get('/books/:id', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const book = await booksCollection.findOne({ _id: new ObjectId(id) });
+        if (!book) {
+          return res.status(404).send({ error: 'Book not found' });
+        }
+        res.send({ success: true, result: book });
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to fetch book' });
+      }
+    });
 
     app.post('/books', async (req, res) => {
-      const data = req.body
-
-      const result = await bookCollection.insertOne(data)
-      res.send({
-        success: true,
-        result
-      })
-    })
-
-    app.get('/books/:id', verifyToken, async (req, res) => {
-      const { id } = req.params
-      const objectid = new ObjectId(id)
-      const result = await bookCollection.findOne({ _id: objectid })
-      res.send({
-        success: true,
-        result
-      })
-    })
+      try {
+        const book = req.body;
+        const result = await booksCollection.insertOne(book);
+        res.send({ success: true, result });
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to add book' });
+      }
+    });
 
     app.put('/books/:id', async (req, res) => {
-      const { id } = req.params
-      const data = req.body
-      const objectid = new ObjectId(id)
-      const filter = { _id: objectid }
-      const update = {
-        $set: data
+      try {
+        const { id } = req.params;
+        const book = req.body;
+        const result = await booksCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: book }
+        );
+        res.send({ success: true, result });
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to update book' });
       }
-      const result = await bookCollection.updateOne(filter, update)
-
-      res.send({
-        success: true,
-        result
-      })
-    })
+    });
 
     app.delete('/books/:id', async (req, res) => {
-      const { id } = req.params
-      const objectid = new ObjectId(id)
+      try {
+        const { id } = req.params;
+        const result = await booksCollection.deleteOne({ _id: new ObjectId(id) });
+        res.send({ success: true, result });
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to delete book' });
+      }
+    });
 
-      const result = await bookCollection.deleteOne({ _id: objectid })
-
-      res.send({
-        success: true,
-        result
-      })
-    })
-
+    // Latest books
     app.get('/latest', async (req, res) => {
-      const result = await bookCollection.find().limit(8).toArray()
+      try {
+        const books = await booksCollection.find().limit(8).toArray();
+        res.send(books);
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to fetch latest books' });
+      }
+    });
 
-      res.send(result)
-    })
+    // My Books routes
+    app.get('/my-books', async (req, res) => {
+      try {
+        const { userEmail } = req.query;
+        const books = await myBooksCollection.find({ userEmail }).toArray();
+        res.send(books);
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to fetch my books' });
+      }
+    });
 
+    app.post('/my-books', async (req, res) => {
+      try {
+        const book = req.body;
+        // Check if book already exists in user's collection
+        const existingBook = await myBooksCollection.findOne({
+          bookId: book.bookId,
+          userEmail: book.userEmail
+        });
 
+        if (existingBook) {
+          return res.status(400).send({ error: 'Book already in collection' });
+        }
 
+        const result = await myBooksCollection.insertOne(book);
+        res.send({ success: true, result });
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to add book to collection' });
+      }
+    });
 
+    app.delete('/my-books/:id', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const result = await myBooksCollection.deleteOne({ _id: new ObjectId(id) });
+        res.send({ success: true, result });
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to remove book from collection' });
+      }
+    });
 
+    // Comments routes
+    app.get('/comments/:bookId', async (req, res) => {
+      try {
+        const { bookId } = req.params;
+        const comments = await commentsCollection.find({ bookId }).sort({ timestamp: -1 }).toArray();
+        res.send(comments);
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to fetch comments' });
+      }
+    });
 
-    // await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    app.post('/comments', async (req, res) => {
+      try {
+        const comment = req.body;
+        const result = await commentsCollection.insertOne(comment);
+        res.send({ success: true, result });
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to add comment' });
+      }
+    });
+
+    // Top rated books
+    app.get('/top-rated', async (req, res) => {
+      try {
+        const books = await booksCollection.find().sort({ rating: -1 }).limit(3).toArray();
+        res.send(books);
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to fetch top rated books' });
+      }
+    });
+
+    // Health check
+    app.get('/', (req, res) => {
+      res.send('Book Haven Server is running!');
+    });
+
   } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+    // Client will stay connected
   }
 }
+
 run().catch(console.dir);
 
-
-
-
-
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
+  console.log(`Book Haven server running on port ${port}`);
+});
