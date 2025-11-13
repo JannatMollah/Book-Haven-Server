@@ -85,6 +85,12 @@ async function run() {
         })
     })
 
+    app.get('/latest', async (req, res) => {
+        const result = await bookCollection.find().limit(8).toArray()
+
+        res.send(result)
+    })
+
 
 
 
