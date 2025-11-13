@@ -1,6 +1,6 @@
 const express = require('express')
 const cors = require('cors')
-const { MongoClient, ServerApiVersion, ClientEncryption } = require('mongodb');
+const { MongoClient, ServerApiVersion, ClientEncryption, ObjectId } = require('mongodb');
 const app = express()
 const port = 3000
 
@@ -35,14 +35,44 @@ async function run() {
 
         res.send(result)
     })
+
     app.post('/books', async (req, res) => {
       const data = req.body
       console.log(data);
       
-        // const result = await bookCollection.find().toArray()
-
-        res.send("success")
+        const result = await bookCollection.insertOne(data)
+        res.send({
+          success: true,
+          result
+        })
     })
+
+    app.get('/books/:id', async (req, res) => {
+      const {id} = req.params
+      const objectid = new ObjectId(id)
+        const result = await bookCollection.findOne({_id: objectid})
+        res.send({
+          success: true,
+          result
+        })
+    })
+
+    app.put('/books/:id', async (req, res) => {
+      const {id} = req.params
+      const data = req.body
+      const objectid = new ObjectId(id)
+      const filter = {_id: objectid}
+      const update = {
+        $set: data
+      }
+        const result = await bookCollection.updateOne(filter, update)
+        res.send({
+          success: true,
+          result
+        })
+    })
+
+
 
 
 
