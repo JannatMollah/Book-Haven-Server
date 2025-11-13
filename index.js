@@ -35,6 +35,14 @@ async function run() {
 
         res.send(result)
     })
+    app.post('/books', async (req, res) => {
+      const data = req.body
+      console.log(data);
+      
+        // const result = await bookCollection.find().toArray()
+
+        res.send("success")
+    })
 
 
 
